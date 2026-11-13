@@ -1,0 +1,28 @@
+# dependencies
+/node_modules
+
+# next.js
+/.next/
+/out/
+next-env.d.ts
+*.tsbuildinfo
+
+# database files
+/prisma/*.db
+/prisma/*.db-journal
+/prisma/test-*.db*
+
+# testing
+/coverage
+/test-evidence/
+/test-results/
+/playwright-report/
+/playwright/.cache/
+
+# env (holds Alpaca keys)
+.env
+.env*.local
+
+# misc
+.DS_Store
+*.log

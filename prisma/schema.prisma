@@ -1,0 +1,84 @@
+// TradeDesk data model.
+// Conventions (see docs/CONVENTIONS.md):
+//   - Money is stored as integer cents (Int). Never floats.
+//   - Percentages are stored as integer basis points (1% = 100).
+//   - Enum-like fields are Strings validated by Zod in src/contracts/api.ts.
+//   - Alpaca API keys are NOT stored here; they come from environment variables.
+//   - householdId scopes every row so multi-user support can be added later.
+//     The single-user app always uses "local".
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Settings {
+  householdId       String   @id @default("local")
+  activeStrategyId  String   @default("trend") // default strategy for every symbol without an override
+  botEnabled        Boolean  @default(false) // the scheduler only trades while this is on
+  dryRun            Boolean  @default(true) // log decisions without sending orders
+  liveAcknowledged  Boolean  @default(false) // the user typed LIVE in Settings; required before real-money orders
+  positionBps       Int      @default(1000) // equity fraction per position, basis points
+  stopLossBps       Int      @default(500) // protective stop below entry, basis points
+  maxPositions      Int      @default(5)
+  entryDelayMinutes Int      @default(5) // minutes after the open before the daily cycle runs
+  lastRunDate       String? // YYYY-MM-DD (New York) of the last scheduled cycle, so a restart doesn't repeat it
+  updatedAt         DateTime @updatedAt
+}
+
+// The user's saved parameters for one strategy. Absent row = the strategy's built-in defaults.
+model StrategyConfig {
+  strategyId String   @id
+  paramsJson String // JSON object, validated against the strategy's parameter spec
+  updatedAt  DateTime @updatedAt
+}
+
+// A ticker the bot watches. strategyId null = follow the active (default) strategy.
+model WatchSymbol {
+  id          String   @id @default(cuid())
+  householdId String   @default("local")
+  symbol      String
+  strategyId  String? // per-symbol override
+  enabled     Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  @@unique([householdId, symbol])
+}
+
+// One pass of the bot over the watchlist.
+model BotRun {
+  id          String        @id @default(cuid())
+  householdId String        @default("local")
+  startedAt   DateTime      @default(now())
+  finishedAt  DateTime?
+  trigger     String // SCHEDULED | MANUAL
+  dryRun      Boolean
+  status      String        @default("RUNNING") // RUNNING | OK | ERROR | SKIPPED
+  message     String?
+  equityCents Int?
+  decisions   BotDecision[]
+
+  @@index([householdId, startedAt])
+}
+
+// What the bot decided for one symbol in one run, and what happened to it.
+model BotDecision {
+  id         String   @id @default(cuid())
+  runId      String
+  symbol     String
+  strategyId String
+  signal     Int // 1 = want long, 0 = want flat
+  action     String // BUY | SELL | HOLD
+  status     String // SUBMITTED | DRY_RUN | SKIPPED | FAILED | NONE
+  priceCents Int?
+  qty        Int?
+  message    String?
+  createdAt  DateTime @default(now())
+  run        BotRun   @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId])
+}
